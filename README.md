@@ -68,7 +68,8 @@ go build ./cmd/mk-bkconv
 
 This produces an executable named `mk-bkconv` (or `mk-bkconv.exe` on Windows) in the current directory.
 
-Windows users: for faster iterative builds you can run the included `compile.bat` from the repository root — it runs `gofmt`, `go vet` (optional) and `go build` and pauses so you can read output.
+> [!TIP]
+> Windows: use the included `compile.bat` for a quick iterative build loop — it runs `gofmt` and `go build` and pauses so you can inspect any output.
 
 Cross-compilation (optional): set `GOOS`/`GOARCH` environment variables before building, for example:
 
@@ -84,9 +85,6 @@ Or on Bash:
 ```bash
 GOOS=linux GOARCH=amd64 go build -o mk-bkconv-linux ./cmd/mk-bkconv
 ```
-
-> [!TIP]
-> Windows: use the included `compile.bat` for a quick iterative build loop — it runs `gofmt` and `go build` and pauses so you can inspect any output.
 
 ## Usage
 
