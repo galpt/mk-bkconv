@@ -1,6 +1,8 @@
 package convert
 
 import (
+	"hash/fnv"
+
 	"github.com/galpt/mk-bkconv/pkg/kotatsu"
 	pb "github.com/galpt/mk-bkconv/proto/mihon"
 )
@@ -18,6 +20,26 @@ func stringVal(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// generateSourceID creates a deterministic numeric source ID from a Kotatsu source name
+// First attempts to use known source mappings (for sources that exist in both ecosystems)
+// Falls back to FNV hash for unknown sources
+func generateSourceID(sourceName string) int64 {
+	if sourceName == "" {
+		// Use MangaDex as fallback
+		return GenerateMihonSourceID("MangaDex", "all", 1)
+	}
+
+	// Try known mapping first
+	if id, _, found := LookupKnownSource(sourceName); found {
+		return id
+	}
+
+	// Fallback to FNV hash for unknown sources
+	h := fnv.New64a()
+	h.Write([]byte(sourceName))
+	return int64(h.Sum64())
 }
 
 // MihonToKotatsu converts from protobuf-based Mihon backup to Kotatsu backup
@@ -75,35 +97,68 @@ func KotatsuToMihon(kb *kotatsu.KotatsuBackup) *pb.Backup {
 		var chapters []*pb.BackupChapter
 		for _, kc := range idx.Chapters {
 			chapters = append(chapters, &pb.BackupChapter{
-				Url:           kc.Url,
-				Name:          kc.Name,
-				Scanlator:     stringPtr(kc.Scanlator),
-				Read:          false,
-				Bookmark:      false,
-				LastPageRead:  0,
-				ChapterNumber: kc.Number,
+				Url:            kc.Url,
+				Name:           kc.Name,
+				Scanlator:      stringPtr(kc.Scanlator),
+				Read:           false,
+				Bookmark:       false,
+				LastPageRead:   0,
+				ChapterNumber:  kc.Number,
+				DateFetch:      0,
+				DateUpload:     kc.UploadDate,
+				SourceOrder:    0,
+				LastModifiedAt: 0,
+				Version:        1,
 			})
 		}
 		chaptersByManga[idx.MangaId] = chapters
 	}
 
+	// Track unique sources and build source mapping
+	sourceMap := make(map[string]int64)
+	var backupSources []*pb.BackupSource
+
 	// Convert favourites to mangas with their chapters
 	for _, fav := range kb.Favourites {
 		km := fav.Manga
+
+		// Generate or retrieve source ID
+		sourceID := generateSourceID(km.Source)
+		if _, exists := sourceMap[km.Source]; !exists {
+			sourceMap[km.Source] = sourceID
+			// Try to get the Mihon source name, fall back to Kotatsu name
+			sourceName := km.Source
+			if id, name, found := LookupKnownSource(km.Source); found {
+				sourceName = name
+				sourceID = id
+			}
+			backupSources = append(backupSources, &pb.BackupSource{
+				Name:     sourceName,
+				SourceId: sourceID,
+			})
+		}
+
 		m := &pb.BackupManga{
-			Source:       0,
-			Url:          km.Url,
-			Title:        km.Title,
-			Author:       stringPtr(km.Author),
-			Artist:       stringPtr(""),
-			Description:  stringPtr(""),
-			Genre:        []string{},
-			Status:       0,
-			ThumbnailUrl: stringPtr(km.CoverUrl),
-			DateAdded:    fav.CreatedAt,
-			Chapters:     chaptersByManga[km.Id], // attach chapters from index
-			Categories:   []int64{fav.CategoryId},
-			Favorite:     true,
+			Source:         sourceID, // Now using generated source ID
+			Url:            km.Url,
+			Title:          km.Title,
+			Author:         stringPtr(km.Author),
+			Artist:         stringPtr(""),
+			Description:    stringPtr(""),
+			Genre:          []string{},
+			Status:         0,
+			ThumbnailUrl:   stringPtr(km.CoverUrl),
+			DateAdded:      fav.CreatedAt,
+			Viewer:         0,
+			Chapters:       chaptersByManga[km.Id],
+			Categories:     []int64{fav.CategoryId},
+			Favorite:       true,
+			ChapterFlags:   0,
+			ViewerFlags:    nil,
+			UpdateStrategy: 0, // ALWAYS_UPDATE
+			LastModifiedAt: fav.CreatedAt,
+			Version:        1,
+			Initialized:    true, // Mark as initialized
 		}
 		b.BackupManga = append(b.BackupManga, m)
 	}
@@ -114,8 +169,12 @@ func KotatsuToMihon(kb *kotatsu.KotatsuBackup) *pb.Backup {
 			Name:  c.Title,
 			Order: c.CreatedAt,
 			Id:    c.CategoryId,
+			Flags: 0,
 		})
 	}
+
+	// Add the source mappings
+	b.BackupSources = backupSources
 
 	return b
 }

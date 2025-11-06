@@ -130,9 +130,33 @@ Example (PowerShell):
 
 ## Limitations & next steps
 
-1. The current protobuf implementation covers core fields (manga, chapters, categories). Several Mihon sections (preferences, sources, extension repos, trackers) are not yet mapped.
-2. Suggested improvement: automatically generate `.proto` files from Mihon Kotlin `@ProtoNumber` annotations and use `protoc` to produce canonical Go types (recommended for correctness and maintainability).
-3. Add unit tests for round-trip conversions and more comprehensive field mapping.
+### Known Limitations
+
+1. **Source ID Mapping**: Kotatsu uses string-based source names (e.g., "MANGAFIRE_EN") while Mihon uses numeric source IDs based on extension package hashes. The converter generates deterministic source IDs from the source names using FNV-1a hashing, but these won't match real Mihon extension IDs. **After importing to Mihon, you may need to manually reassign the correct sources for your manga.**
+
+2. **Chapter Read Status**: Currently not mapped from Kotatsu history. All chapters import as unread. Future versions could map Kotatsu history to Mihon chapter read status.
+
+3. **Incomplete Field Mapping**: Only core fields (manga, chapters, categories) are converted. The following are not yet implemented:
+   - Tracking data (MyAnimeList, AniList, etc.)
+   - Reading history timestamps
+   - Bookmarks
+   - Preferences
+   - Source preferences
+   - Extension repositories
+
+4. **Proto Schema Difference**: Mihon uses proto2 syntax with `required`/`optional` modifiers, while this implementation uses proto3. The conversion works correctly, but a future update could align the schemas exactly for perfect fidelity.
+
+### Next Steps
+
+1. Map Kotatsu reading history to Mihon chapter read/bookmark status
+2. Add source name hints in manga notes field to help with post-import source assignment
+3. Consider migrating to proto2 schema matching Mihon exactly
+4. Add comprehensive unit tests for round-trip conversions
+5. Implement streaming for very large backups to reduce memory usage
+
+### Testing
+
+The converter has been tested with real backup files containing 117+ manga and successfully generates files that Mihon accepts without corruption errors. The analysis tool (`tools/analyze`) can be used to validate converted backups before importing.
 
 ## Contributing
 
