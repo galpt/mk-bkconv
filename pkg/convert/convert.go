@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+	"errors"
 
 	"github.com/galpt/mk-bkconv/pkg/kotatsu"
 	pb "github.com/galpt/mk-bkconv/proto/mihon"
@@ -27,21 +28,24 @@ func updateStrategyPtr(u pb.UpdateStrategy) *pb.UpdateStrategy { return &u }
 // generateSourceID creates a deterministic numeric source ID from a Kotatsu source name
 // First attempts to use known source mappings (for sources that exist in both ecosystems)
 // Falls back to FNV hash for unknown sources
-func generateSourceID(sourceName string) int64 {
+func generateSourceID(sourceName string, allowFallback bool) (int64, error) {
 	if sourceName == "" {
 		// Use MangaDex as fallback
-		return GenerateMihonSourceID("MangaDex", "all", 1)
+		return GenerateMihonSourceID("MangaDex", "all", 1), nil
 	}
 
 	// Try known mapping first
 	if id, _, found := LookupKnownSource(sourceName); found {
-		return id
+		return id, nil
 	}
 
+	if !allowFallback {
+		return -1, errors.New("no known mapping found for " + sourceName + " and fallback not allowed")
+	}
 	// Fallback to FNV hash for unknown sources
 	h := fnv.New64a()
 	h.Write([]byte(sourceName))
-	return int64(h.Sum64())
+	return int64(h.Sum64()), nil
 }
 
 // MihonToKotatsu converts from protobuf-based Mihon backup to Kotatsu backup
@@ -95,7 +99,7 @@ func MihonToKotatsu(b *pb.Backup) *kotatsu.KotatsuBackup {
 }
 
 // KotatsuToMihon converts from Kotatsu backup to protobuf-based Mihon backup
-func KotatsuToMihon(kb *kotatsu.KotatsuBackup) *pb.Backup {
+func KotatsuToMihon(kb *kotatsu.KotatsuBackup, allowSourceFallback bool) (*pb.Backup, error) {
 	b := &pb.Backup{}
 
 	// Build a map of manga ID -> chapters from the index
@@ -130,7 +134,8 @@ func KotatsuToMihon(kb *kotatsu.KotatsuBackup) *pb.Backup {
 		km := fav.Manga
 
 		// Generate or retrieve source ID
-		sourceID := generateSourceID(km.Source)
+		sourceID, err := generateSourceID(km.Source, allowSourceFallback)
+		if err != nil { return nil, err }
 		if _, exists := sourceMap[km.Source]; !exists {
 			sourceMap[km.Source] = sourceID
 			// Try to get the Mihon source name, fall back to Kotatsu name
@@ -231,5 +236,5 @@ func KotatsuToMihon(kb *kotatsu.KotatsuBackup) *pb.Backup {
 	// pass kb.RawSources (may be empty) so the filter can attempt to read kotatsu-provided list
 	FilterBackupToCommon(b, kb.RawSources)
 
-	return b
+	return b, nil
 }

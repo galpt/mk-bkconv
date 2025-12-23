@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/galpt/mk-bkconv/pkg/convert"
 	"github.com/galpt/mk-bkconv/pkg/kotatsu"
@@ -17,6 +18,7 @@ func main() {
 	}
 
 	sub := os.Args[1]
+	allowSourcesFallback := slices.Contains(os.Args, "--allow-fallback")
 	switch sub {
 	case "mihon-to-kotatsu":
 		in := flag.String("in", "", "input mihon backup file (.tachibk)")
@@ -51,7 +53,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error reading kotatsu zip: %v\n", err)
 			os.Exit(3)
 		}
-		b := convert.KotatsuToMihon(kb)
+		b, err := convert.KotatsuToMihon(kb, allowSourcesFallback)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error converting kotatsu to mihon: %v\n", err)
+			os.Exit(5)
+		}
 		if err := mihon.WriteBackup(*out, b); err != nil {
 			fmt.Fprintf(os.Stderr, "error writing mihon backup: %v\n", err)
 			os.Exit(4)
@@ -67,5 +73,7 @@ func main() {
 func usage() {
 	fmt.Println("mk-bkconv: convert between Mihon and Kotatsu backups")
 	fmt.Println("USAGE:")
-	fmt.Println("  mk-bkconv <mihon-to-kotatsu|kotatsu-to-mihon> -in <input> -out <output>")
+	fmt.Println("  mk-bkconv <mihon-to-kotatsu|kotatsu-to-mihon> -in <input> -out <output> --allow-fallback")
+	fmt.Println("    --allow-fallback   this flag allows you to fallback to hashing when there was no mapping for a source found")
+
 }
