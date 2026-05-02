@@ -2,6 +2,8 @@ package convert
 
 import (
 	"encoding/json"
+	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,24 +11,31 @@ import (
 	pb "github.com/galpt/mk-bkconv/proto/mihon"
 )
 
+// resolveReferencesRoot returns the path to the references directory.
+// It checks the REFERENCES_ROOT env var first, then falls back to
+// ../references relative to the working directory.
+func resolveReferencesRoot() string {
+	refRoot := os.Getenv("REFERENCES_ROOT")
+	if refRoot != "" {
+		return refRoot
+	}
+	cwd, err := os.Getwd()
+	if err == nil {
+		candidate := filepath.Join(cwd, "..", "..", "references")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return ""
+}
+
 // FilterBackupToCommon removes mangas and sources from the Mihon backup
 // that don't have matching sources available in both Kotatsu and Mihon.
 // It attempts to discover Mihon extension names from a references folder
 // (ENV "REFERENCES_ROOT" or ../references by default). If discovery fails
 // it falls back to KnownSourceMapping as a conservative whitelist.
 func FilterBackupToCommon(b *pb.Backup, kotatsuRawSources []byte) {
-	// Discover mihon sources from references (best-effort)
-	refRoot := os.Getenv("REFERENCES_ROOT")
-	if refRoot == "" {
-		// try relative ../references
-		cwd, err := os.Getwd()
-		if err == nil {
-			candidate := filepath.Join(cwd, "..", "..", "references")
-			if _, err := os.Stat(candidate); err == nil {
-				refRoot = candidate
-			}
-		}
-	}
+	refRoot := resolveReferencesRoot()
 
 	mihonNames := make(map[string]struct{})
 	// Seed from KnownSourceMapping values (guaranteed known mappings)
@@ -36,7 +45,7 @@ func FilterBackupToCommon(b *pb.Backup, kotatsuRawSources []byte) {
 
 	// If we have a references root, try to walk and discover extension directories
 	if refRoot != "" {
-		_ = filepath.Walk(refRoot, func(path string, info os.FileInfo, err error) error {
+		if err := filepath.Walk(refRoot, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
 			}
@@ -54,14 +63,30 @@ func FilterBackupToCommon(b *pb.Backup, kotatsuRawSources []byte) {
 				}
 			}
 			return nil
-		})
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: error walking references directory %s: %v\n", refRoot, err)
+		}
 	}
 
-	// Build allowed ID set from mihonNames using GenerateMihonSourceID where possible
+	// Build allowed ID set from mihonNames — this includes both KnownSourceMapping
+	// entries and any names discovered from the references walk.
 	allowedIDs := make(map[int64]struct{})
-	for _, m := range KnownSourceMapping {
-		if _, ok := mihonNames[strings.ToLower(m.MihonName)]; ok {
-			id := GenerateMihonSourceID(m.MihonName, m.MihonLang, m.MihonVersionID)
+	for name := range mihonNames {
+		// Check if it's a known mapping first
+		found := false
+		for _, m := range KnownSourceMapping {
+			if strings.ToLower(m.MihonName) == name {
+				id := GenerateMihonSourceID(m.MihonName, m.MihonLang, m.MihonVersionID)
+				allowedIDs[id] = struct{}{}
+				found = true
+				break
+			}
+		}
+		if !found {
+			// Discovered from references — use FNV hash as fallback
+			h := fnv.New64a()
+			_, _ = h.Write([]byte(name))
+			id := int64(h.Sum64())
 			allowedIDs[id] = struct{}{}
 		}
 	}
@@ -69,7 +94,7 @@ func FilterBackupToCommon(b *pb.Backup, kotatsuRawSources []byte) {
 	// parse kotatsuRawSources if available to extract kotatsu source names (best-effort)
 	kotatsuNames := make(map[string]struct{})
 	if len(kotatsuRawSources) > 0 {
-		var arr []map[string]interface{}
+		var arr []map[string]any
 		if err := json.Unmarshal(kotatsuRawSources, &arr); err == nil {
 			for _, el := range arr {
 				if s, ok := el["name"].(string); ok {
@@ -134,16 +159,7 @@ func FilterBackupToCommon(b *pb.Backup, kotatsuRawSources []byte) {
 // references (ENV "REFERENCES_ROOT" or ../references by default) and falls back
 // to KnownSourceMapping keys if discovery fails.
 func FilterMihonForKotatsu(b *pb.Backup) {
-	refRoot := os.Getenv("REFERENCES_ROOT")
-	if refRoot == "" {
-		cwd, err := os.Getwd()
-		if err == nil {
-			candidate := filepath.Join(cwd, "..", "..", "references")
-			if _, err := os.Stat(candidate); err == nil {
-				refRoot = candidate
-			}
-		}
-	}
+	refRoot := resolveReferencesRoot()
 
 	kotatsuNames := make(map[string]struct{})
 	// Seed from KnownSourceMapping keys
@@ -153,7 +169,7 @@ func FilterMihonForKotatsu(b *pb.Backup) {
 
 	if refRoot != "" {
 		// look for kotatsu-parsers-master repo
-		_ = filepath.Walk(refRoot, func(path string, info os.FileInfo, err error) error {
+		if err := filepath.Walk(refRoot, func(path string, info os.FileInfo, err error) error {
 			if err != nil || !info.IsDir() {
 				return nil
 			}
@@ -170,14 +186,18 @@ func FilterMihonForKotatsu(b *pb.Backup) {
 				}
 			}
 			return nil
-		})
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: error walking references directory %s: %v\n", refRoot, err)
+		}
 	}
 
-	// Build allowed Mihon IDs for kotatsu-supported sources via KnownSourceMapping
+	// Build allowed Mihon IDs for kotatsu-supported sources.
+	// Iterate over kotatsuNames (which includes both seeded KnownSourceMapping keys
+	// and any names discovered from the references walk) so the walk actually influences
+	// which sources are allowed through.
 	allowedIDs := make(map[int64]struct{})
-	for k := range KnownSourceMapping {
-		if _, ok := kotatsuNames[strings.ToLower(k)]; ok {
-			m := KnownSourceMapping[k]
+	for name := range kotatsuNames {
+		if m, exists := KnownSourceMapping[strings.ToUpper(name)]; exists {
 			id := GenerateMihonSourceID(m.MihonName, m.MihonLang, m.MihonVersionID)
 			allowedIDs[id] = struct{}{}
 		}

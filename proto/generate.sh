@@ -23,7 +23,7 @@ if ! command -v protoc-gen-go &> /dev/null; then
 fi
 
 # Generate from mihon backup.proto
-protoc --go_out=.. --go_opt=paths=source_relative mihon/backup.proto
+protoc --go_out=.. --go_opt=module=github.com/galpt/mk-bkconv mihon/backup.proto
 if [ $? -ne 0 ]; then
     echo "ERROR: Failed to generate Go code from mihon/backup.proto"
     exit 1
@@ -32,5 +32,5 @@ fi
 echo ""
 echo "✓ Successfully generated Go protobuf code"
 echo "Generated files:"
-echo "  - ../pkg/mihon/pb/backup.pb.go"
+echo "  - ../proto/mihon/backup.pb.go"
 echo ""

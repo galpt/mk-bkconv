@@ -2,7 +2,7 @@ syntax = "proto2";
 
 package mihon.backup;
 
-option go_package = "github.com/galpt/mk-bkconv/pkg/mihon/pb";
+option go_package = "github.com/galpt/mk-bkconv/proto/mihon";
 
 enum UpdateStrategy {
   ALWAYS_UPDATE = 0;

@@ -31,20 +31,20 @@ type KotatsuFavouriteEntry struct {
 }
 
 type KotatsuManga struct {
-	Id            int64         `json:"id"`
-	Title         string        `json:"title"`
-	AltTitle      string        `json:"alt_title"`
-	Url           string        `json:"url"`
-	PublicUrl     string        `json:"public_url"`
-	Rating        float32       `json:"rating"`
-	Nsfw          bool          `json:"nsfw"`
-	ContentRating string        `json:"content_rating"`
-	CoverUrl      string        `json:"cover_url"`
-	LargeCover    string        `json:"large_cover_url"`
-	State         string        `json:"state"`
-	Author        string        `json:"author"`
-	Source        string        `json:"source"`
-	Tags          []interface{} `json:"tags"`
+	Id            int64   `json:"id"`
+	Title         string  `json:"title"`
+	AltTitle      string  `json:"alt_title"`
+	Url           string  `json:"url"`
+	PublicUrl     string  `json:"public_url"`
+	Rating        float32 `json:"rating"`
+	Nsfw          bool    `json:"nsfw"`
+	ContentRating string  `json:"content_rating"`
+	CoverUrl      string  `json:"cover_url"`
+	LargeCover    string  `json:"large_cover_url"`
+	State         string  `json:"state"`
+	Author        string  `json:"author"`
+	Source        string  `json:"source"`
+	Tags          []any   `json:"tags"`
 }
 
 type KotatsuCategory struct {
@@ -163,6 +163,8 @@ func LoadKotatsuZip(path string) (*KotatsuBackup, error) {
 }
 
 // WriteKotatsuZip writes a minimal Kotatsu zip containing favourites and categories JSON arrays.
+// It also passes through any raw sections (settings, reader_grid, sources) that were read from
+// the source backup, preserving custom configuration.
 func WriteKotatsuZip(path string, kb *KotatsuBackup) error {
 	f, err := os.Create(path)
 	if err != nil {
@@ -179,7 +181,6 @@ func WriteKotatsuZip(path string, kb *KotatsuBackup) error {
 		}
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
-		enc.SetIndent("", "")
 		return enc.Encode(v)
 	}
 
@@ -189,5 +190,32 @@ func WriteKotatsuZip(path string, kb *KotatsuBackup) error {
 	if err := add("categories", kb.Categories); err != nil {
 		return fmt.Errorf("write categories: %w", err)
 	}
+
+	// Passthrough raw sections — these are raw JSON bytes, so write them directly
+	// to avoid double-encoding through json.Encoder.
+	writeRaw := func(name string, data []byte) error {
+		if data == nil {
+			return nil
+		}
+		w, err := zw.Create(name)
+		if err != nil {
+			return fmt.Errorf("create %s entry: %w", name, err)
+		}
+		if _, err := w.Write(data); err != nil {
+			return fmt.Errorf("write %s: %w", name, err)
+		}
+		return nil
+	}
+
+	if err := writeRaw("settings", kb.RawSettings); err != nil {
+		return err
+	}
+	if err := writeRaw("reader_grid", kb.RawReaderGrid); err != nil {
+		return err
+	}
+	if err := writeRaw("sources", kb.RawSources); err != nil {
+		return err
+	}
+
 	return nil
 }

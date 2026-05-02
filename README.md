@@ -46,7 +46,7 @@ A Go tool to convert backup files between the Mihon and Kotatsu Android apps.
 
 ## Requirements
 
-- Go 1.20+
+- Go 1.23+
 
 > [!NOTE]
 > The following tools are optional and only required if you want to regenerate the Go protobuf bindings from the `.proto` files:
@@ -85,16 +85,13 @@ This produces an executable named `mk-bkconv` (or `mk-bkconv.exe` on Windows) in
 Cross-compilation (optional): set `GOOS`/`GOARCH` environment variables before building, for example:
 
 ```bash
-# Linux from Windows (example)
-SET GOOS=linux
-SET GOARCH=amd64
-go build -o mk-bkconv-linux ./cmd/mk-bkconv
+GOOS=linux GOARCH=amd64 go build -o mk-bkconv-linux ./cmd/mk-bkconv
 ```
 
-Or on Bash:
+Or on Windows PowerShell:
 
-```bash
-GOOS=linux GOARCH=amd64 go build -o mk-bkconv-linux ./cmd/mk-bkconv
+```powershell
+$env:GOOS="linux"; $env:GOARCH="amd64"; go build -o mk-bkconv-linux ./cmd/mk-bkconv
 ```
 
 ## Usage
@@ -147,12 +144,26 @@ To restore the backup in Mihon:
 >
 > 2. If you want deterministic outputs for testing, run the conversions on small sample backups first and inspect the resulting ZIP and JSON contents.
 
+## Tools
+
+The repository includes several utility tools in `tools/`:
+
+| Tool | Purpose |
+|------|---------|
+| `tools/analyze` | Inspect and validate Mihon protobuf backups |
+| `tools/mapping_review` | Review source ID mappings and export to CSV |
+| `tools/validate` | Validate backup file structure |
+| `tools/dumphexcmd` | Hex dump for debugging binary protobuf data |
+| `tools/show-sources` | Display sources present in a backup |
+| `tools/test-sourceids` | Generate source IDs for testing |
+
+Build any tool with: `go build ./tools/<name>`
+
 ## Design notes
 
 - Mihon backups are produced using Kotlin `kotlinx.serialization.protobuf` annotations (`@ProtoNumber`) and are usually gzipped. The tool detects gzip magic bytes and decodes accordingly.
 - Kotatsu backups are ZIP files containing JSON arrays under named sections (e.g., `favourites`, `categories`, `history`).
-- For an MVP I implemented a minimal protobuf wire reader/writer in `pkg/mihon` that handles the fields needed for basic migrations (varint, length-delimited strings, 32-bit floats for chapter numbers). This avoids requiring `protoc` and generated code during early development.
-- For full fidelity and long-term robustness, reconstructing the `.proto` definitions from Mihon's Kotlin models and generating Go bindings via `protoc` is recommended.
+- The `.proto` definitions were reconstructed from Mihon's Kotlin models and Go bindings are generated via `protoc`. The generated code lives in `proto/mihon/backup.pb.go`.
 
 ### Data and privacy
 
@@ -178,7 +189,7 @@ To restore the backup in Mihon:
    - Source preferences
    - Extension repositories
 
-4. **Proto Schema Difference**: Mihon uses proto2 syntax with `required`/`optional` modifiers, while this implementation uses proto3. The conversion works correctly, but a future update could align the schemas exactly for perfect fidelity.
+4. **Proto Schema Difference**: Mihon uses proto2 syntax with `required`/`optional` modifiers. This implementation matches that (proto2), but minor schema differences may still exist for rarely-used fields.
 
 ### Next Steps
 

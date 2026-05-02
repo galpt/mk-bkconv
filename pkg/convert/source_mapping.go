@@ -180,7 +180,7 @@ var KnownSourceMapping = map[string]SourceMapping{
 		MihonVersionID: 1,
 		Notes:          "",
 	},
-	"WPcomics": {
+	"WPCOMICS": {
 		MihonName:      "wpcomics",
 		MihonLang:      "all",
 		MihonVersionID: 1,
@@ -416,9 +416,11 @@ func GenerateMihonSourceID(name, lang string, versionID int) int64 {
 	return id
 }
 
-// LookupKnownSource attempts to find a known Mihon mapping for a Kotatsu source
+// LookupKnownSource attempts to find a known Mihon mapping for a Kotatsu source.
+// The lookup is case-insensitive — the key is uppercased before matching against
+// the KnownSourceMapping entries (all of which are UPPERCASE).
 func LookupKnownSource(kotatsuSource string) (sourceID int64, sourceName string, found bool) {
-	if mapping, exists := KnownSourceMapping[kotatsuSource]; exists {
+	if mapping, exists := KnownSourceMapping[strings.ToUpper(kotatsuSource)]; exists {
 		id := GenerateMihonSourceID(mapping.MihonName, mapping.MihonLang, mapping.MihonVersionID)
 		return id, mapping.MihonName, true
 	}

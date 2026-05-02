@@ -39,10 +39,8 @@ func main() {
 		analyzeBackupManga(m)
 	}
 
-	if len(backup.BackupManga) > 0 {
-		fmt.Printf("\n=== CHECKING FOR COMMON ISSUES ===\n")
-		checkForIssues(backup)
-	}
+	fmt.Printf("\n=== CHECKING FOR COMMON ISSUES ===\n")
+	checkForIssues(backup)
 }
 
 func analyzeBackupManga(m *pb.BackupManga) {

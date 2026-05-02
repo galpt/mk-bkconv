@@ -1,0 +1,17 @@
+# Go binaries
+mk-bkconv
+mk-bkconv.exe
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build output
+/dist/
+/build/

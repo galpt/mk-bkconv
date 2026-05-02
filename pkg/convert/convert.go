@@ -44,7 +44,7 @@ func generateSourceID(sourceName string, allowFallback bool) (int64, error) {
 	}
 	// Fallback to FNV hash for unknown sources
 	h := fnv.New64a()
-	h.Write([]byte(sourceName))
+	_, _ = h.Write([]byte(sourceName)) // hash.Write never returns error per Go spec
 	return int64(h.Sum64()), nil
 }
 
@@ -73,7 +73,7 @@ func MihonToKotatsu(b *pb.Backup) *kotatsu.KotatsuBackup {
 				LargeCover: m.GetThumbnailUrl(),
 				Author:     m.GetAuthor(),
 				Source:     "",
-				Tags:       []interface{}{},
+				Tags:       []any{},
 			},
 		}
 
@@ -139,13 +139,13 @@ func KotatsuToMihon(kb *kotatsu.KotatsuBackup, allowSourceFallback bool) (*pb.Ba
 			return nil, err
 		}
 		if _, exists := sourceMap[km.Source]; !exists {
-			sourceMap[km.Source] = sourceID
 			// Try to get the Mihon source name, fall back to Kotatsu name
 			sourceName := km.Source
 			if id, name, found := LookupKnownSource(km.Source); found {
 				sourceName = name
 				sourceID = id
 			}
+			sourceMap[km.Source] = sourceID
 			backupSources = append(backupSources, &pb.BackupSource{
 				Name:     stringPtr(sourceName),
 				SourceId: int64Ptr(sourceID),
@@ -234,7 +234,9 @@ func KotatsuToMihon(kb *kotatsu.KotatsuBackup, allowSourceFallback bool) (*pb.Ba
 		fmt.Printf("💡 TIP: Extension names usually match source names\n")
 		fmt.Printf("   Example: 'MangaDex' source → install 'MangaDex' extension\n\n")
 		fmt.Printf(strings.Repeat("=", 60) + "\n\n")
-	} // Filter out any sources/mangas that are not available in Mihon
+	}
+
+	// Filter out any sources/mangas that are not available in Mihon
 	// pass kb.RawSources (may be empty) so the filter can attempt to read kotatsu-provided list
 	FilterBackupToCommon(b, kb.RawSources)
 

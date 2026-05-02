@@ -1,33 +1,20 @@
 package main
 
 import (
-	"crypto/md5"
 	"encoding/csv"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"regexp"
 	"strconv"
-	"strings"
-)
 
-// GenerateMihonSourceID replicates the algorithm in pkg/convert/source_mapping.go
-func GenerateMihonSourceID(name, lang string, versionID int) int64 {
-	key := fmt.Sprintf("%s/%s/%d", strings.ToLower(name), lang, versionID)
-	h := md5.Sum([]byte(key))
-	var id int64
-	for i := 0; i < 8; i++ {
-		id |= int64(h[i]) << (8 * (7 - i))
-	}
-	id &= 0x7FFFFFFFFFFFFFFF
-	return id
-}
+	"github.com/galpt/mk-bkconv/pkg/convert"
+)
 
 func main() {
 	srcPath := "pkg/convert/source_mapping.go"
 	outPath := "known_mappings_review.csv"
-	data, err := ioutil.ReadFile(srcPath)
+	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		log.Fatalf("failed to read %s: %v", srcPath, err)
 	}
@@ -80,7 +67,7 @@ func main() {
 			notes = sm[1]
 		}
 
-		id := GenerateMihonSourceID(mihon, lang, ver)
+		id := convert.GenerateMihonSourceID(mihon, lang, ver)
 		w.Write([]string{kotKey, mihon, lang, strconv.Itoa(ver), strconv.FormatInt(id, 10), notes})
 	}
 
